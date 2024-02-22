@@ -2,26 +2,21 @@ const { createRequire } = require('module');
 const path = require('path');
 
 const workingDirectoryRequire = createRequire(path.resolve(process.cwd(), 'index.js'));
-const { CLIEngine, ESLint } = workingDirectoryRequire('eslint');
+const { ESLint } = workingDirectoryRequire('eslint');
 
 const eslintDisableRegexp = /^\s*eslint-disable-next-line(\s|$)(.*)/;
 
-function runEslint(configuration, source, path) {
+function runEslint(configPath, source, path) {
 	const options = {
-		baseConfig: configuration ? JSON.parse(configuration) : null,
+		// This is of course, a hack
+		baseConfig: require(path.resolve(process.cwd(), configPath)),
 	};
-
-	// Prior to version 8, ESLint exported an object called CLIEngine that provided
-	// the core service.
-	if (CLIEngine) {
-		return Promise.resolve(new CLIEngine(options).executeOnText(source, path)).results;
-	}
 
 	return new ESLint(options).lintText(source, { filePath: path });
 }
 
 module.exports = async function codeMod(file, api, options) {
-	const results = await runEslint(options.baseConfig, file.source, file.path);
+	const results = await runEslint(options.configPath, file.source, file.path);
 
 	if (!results || !results[0] || !results[0].messages) {
 		return;
@@ -39,11 +34,6 @@ module.exports = async function codeMod(file, api, options) {
 	}
 
 	const result = api.j(file.source);
-
-	const commentText =
-		options && options.message
-			? options.message
-			: 'TODO: Fix this the next time the file is edited.';
 
 	const ruleIdWhitelist = (options.rules || '').split(',').filter((x) => x);
 	const ruleIdWhitelistSet = ruleIdWhitelist.length ? new Set(ruleIdWhitelist) : null;
@@ -69,13 +59,13 @@ module.exports = async function codeMod(file, api, options) {
 			continue;
 		}
 
-		addDisableComment(file.path, api, commentText, targetLine, ruleId, firstPathOnLine);
+		addDisableComment(file.path, api, targetLine, ruleId, firstPathOnLine);
 	}
 
 	return result.toSource();
 };
 
-function addDisableComment(filePath, api, commentText, targetLine, ruleId, path) {
+function addDisableComment(filePath, api, targetLine, ruleId, path) {
 	let targetPath = path;
 	while (
 		targetPath.parent &&
@@ -118,7 +108,6 @@ function addDisableComment(filePath, api, commentText, targetLine, ruleId, path)
 		}
 
 		const newComments = [
-			createTrailingComment(api, ` ${commentText}`),
 			createTrailingComment(api, ` eslint-disable-next-line ${ruleId}`),
 		];
 
@@ -135,8 +124,6 @@ function addDisableComment(filePath, api, commentText, targetLine, ruleId, path)
 			return;
 		}
 
-		children.push(createJsxComment(api, commentText));
-		children.push(api.j.jsxText('\n'));
 		children.push(createJsxComment(api, `eslint-disable-next-line ${ruleId}`));
 		children.push(api.j.jsxText('\n'));
 
@@ -144,13 +131,13 @@ function addDisableComment(filePath, api, commentText, targetLine, ruleId, path)
 	}
 
 	if (targetPath.node.type === 'JSXAttribute') {
-		createNormalComment(api, ruleId, commentText, targetPath.value);
+		createNormalComment(api, ruleId, targetPath.value);
 
 		return;
 	}
 
 	if (targetPath.parent && targetPath.parent.node.type === 'JSXExpressionContainer') {
-		createNormalComment(api, ruleId, commentText, targetPath.value);
+		createNormalComment(api, ruleId, targetPath.value);
 
 		return;
 	}
@@ -256,8 +243,6 @@ function addDisableComment(filePath, api, commentText, targetLine, ruleId, path)
 		children.splice(
 			targetIndex,
 			0,
-			createJsxComment(api, commentText),
-			api.j.jsxText('\n'),
 			createJsxComment(api, `eslint-disable-next-line ${ruleId}`),
 			api.j.jsxText('\n')
 		);
@@ -265,10 +250,10 @@ function addDisableComment(filePath, api, commentText, targetLine, ruleId, path)
 		return;
 	}
 
-	createNormalComment(api, ruleId, commentText, targetPath.value);
+	createNormalComment(api, ruleId, targetPath.value);
 }
 
-function createNormalComment(api, ruleId, commentText, targetNode) {
+function createNormalComment(api, ruleId, targetNode) {
 	if (tryRewriteEslintDisable(targetNode.leadingComments, ruleId)) {
 		return;
 	}
@@ -282,7 +267,6 @@ function createNormalComment(api, ruleId, commentText, targetNode) {
 	}
 
 	const newComments = [
-		api.j.line(` ${commentText}`),
 		api.j.line(` eslint-disable-next-line ${ruleId}`),
 	];
 

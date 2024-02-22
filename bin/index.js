@@ -57,11 +57,17 @@ async function findGitignoreArguments() {
 }
 
 (async function runJsCodeShift() {
+  console.log('Processing', process.argv.slice(2));
+  console.log('========');
 	const result = spawn.sync(
 		'node',
 		[
 			jscodeshiftPath,
 			'--no-babel',
+			'--parser=tsx',
+			'--extensions=tsx',
+			'-v',
+			'1',
 			'-t',
 			transformPath,
 			...(await findGitignoreArguments()),
