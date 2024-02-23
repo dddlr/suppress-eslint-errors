@@ -6,13 +6,13 @@ const { ESLint } = workingDirectoryRequire('eslint');
 
 const eslintDisableRegexp = /^\s*eslint-disable-next-line(\s|$)(.*)/;
 
-function runEslint(configPath, source, path) {
+function runEslint(configPath, source, myPath) {
 	const options = {
 		// This is of course, a hack
 		baseConfig: require(path.resolve(process.cwd(), configPath)),
 	};
 
-	return new ESLint(options).lintText(source, { filePath: path });
+	return new ESLint(options).lintText(source, { filePath: myPath });
 }
 
 module.exports = async function codeMod(file, api, options) {
